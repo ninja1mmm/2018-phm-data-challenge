@@ -1,3 +1,4 @@
+print('My name is Zhiyi')
 # Ignore Warnings
 import warnings
 warnings.filterwarnings("ignore")
@@ -18,14 +19,9 @@ import keras.callbacks
 
 #------------------------------------------------------------------------------
 # Read in Data
-#sensor_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar\\train\\01_M01_DC_train.csv')
-#faults_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar\\train\\train_faults\\01_M01_train_fault_data.csv')
-#ttf_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar\\train\\train_ttf\\01_M01_DC_train.csv')
-
-sensor_data = pd.read_pickle('/home/ninja1mmm/Desktop/phm/data/train/01_M01_DC_train')
-faults_data = pd.read_pickle('/home/ninja1mmm/Desktop/phm/data/fault/01_M01_train_fault_data')
-ttf_data = pd.read_pickle('/home/ninja1mmm/Desktop/phm/data/ttf/01_M01_DC_train_ttf')
-
+sensor_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar\\train\\01_M01_DC_train.csv')
+faults_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar\\train\\train_faults\\01_M01_train_fault_data.csv')
+ttf_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar\\train\\train_ttf\\01_M01_DC_train.csv')
 
 sensor_data = sensor_data.drop(['Tool'], axis = 1)
 sensor_data = sensor_data.drop(['Lot'], axis = 1)
@@ -81,7 +77,7 @@ def series_to_supervised(data, y, n_in=1, dropnan=True):
 
 label = ttf_fault1['TTF_FlowCool Pressure Dropped Below Limit']
 df, y = series_to_supervised(sensor_fault1, label, 1, True)
-y = y.values.reshape(-1, 1)
+y = y.reshape(-1, 1)
 df_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 y_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 feature = df_scaler.fit_transform(df)
