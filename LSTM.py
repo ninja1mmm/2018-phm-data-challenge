@@ -77,7 +77,7 @@ def series_to_supervised(data, y, n_in=1, dropnan=True):
 
 label = ttf_fault1['TTF_FlowCool Pressure Dropped Below Limit']
 df, y = series_to_supervised(sensor_fault1, label, 1, True)
-y = y.reshape(-1, 1)
+y = y.values.reshape(-1, 1)
 df_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 y_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 feature = df_scaler.fit_transform(df)
