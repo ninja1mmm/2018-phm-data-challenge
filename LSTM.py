@@ -1,4 +1,3 @@
-print('My name is Zhiyi')
 # Ignore Warnings
 import warnings
 warnings.filterwarnings("ignore")
@@ -12,11 +11,21 @@ import seaborn as sns
 from sklearn import preprocessing
 from sklearn.metrics import mean_squared_error
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Dropout
 from keras.layers import LSTM
 import keras.callbacks
+from keras import backend as K
 
+def Error(y_pred, y_real):
+    y_pred = np.nan_to_num(y_pred, copy = True)
+    y_real = np.nan_to_num(y_real, copy = True)
+    temp = np.exp(-0.001 * y_real) * np.abs(y_real - y_pred)
+    error = np.sum(temp)
+    return error
 
+def customLoss(y_pred, y_real):
+    return K.sum(K.exp(-0.001 * y_real) * K.abs(y_real - y_pred))
+    
 #------------------------------------------------------------------------------
 # Read in Data
 sensor_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar\\train\\01_M01_DC_train.csv')
@@ -26,8 +35,10 @@ ttf_data = pd.read_csv('C:\\Users\\chen.zc\\Desktop\\phm_data_challenge_2018.tar
 sensor_data = sensor_data.drop(['Tool'], axis = 1)
 sensor_data = sensor_data.drop(['Lot'], axis = 1)
 
-sensor_data = sensor_data.loc[sensor_data.index %10 == 0]
-ttf_data = ttf_data.loc[ttf_data.index %10 == 0]
+# =============================================================================
+# sensor_data = sensor_data.loc[sensor_data.index %10 == 0]
+# ttf_data = ttf_data.loc[ttf_data.index %10 == 0]
+# =============================================================================
 sensor_data.index = range(0,len(sensor_data))
 ttf_data.index = range(0,len(ttf_data))
 
@@ -53,6 +64,16 @@ sensor_fault1, ttf_fault1, faults_fault1 = cutoff(sensor_data, faults_data, \
 
 sensor_fault1 = sensor_fault1.fillna(method = 'ffill')
 sensor_fault1['recipe'] = sensor_fault1['recipe'] + 200
+label = ttf_fault1['TTF_FlowCool Pressure Dropped Below Limit']
+
+#------------------------------------------------------------------------------
+# Capture the trends
+temp = ttf_fault1.shift(1)
+diff = ttf_fault1['TTF_FlowCool Pressure Dropped Below Limit'] - \
+        temp['TTF_FlowCool Pressure Dropped Below Limit']
+idx = diff[diff > 0].index
+trend_start_time = idx.values
+trend_start_time = np.insert(trend_start_time, 0, 0)   
 
 # =============================================================================
 # #------------------------------------------------------------------------------
@@ -64,44 +85,64 @@ sensor_fault1['recipe'] = sensor_fault1['recipe'] + 200
 #     sensor_fault1 = sensor_fault1.join(one_hot)
 # 
 # =============================================================================
+
+#------------------------------------------------------------------------------
+# Select data points
+def Select(df, y, start_time, num):
+    col = []
+    y_result = pd.Series()
+    for t in range(1, len(start_time)):
+        if start_time[t] - start_time[t-1] > num:
+            col.append(df[start_time[t] - num: start_time[t]])
+            y_result = y_result.append(y[start_time[t] - num: start_time[t]])
+        else:
+            col.append(df[start_time[t-1]: start_time[t]])
+            y_result = y_result.append(y[start_time[t-1]: start_time[t]])
+    df_result = pd.concat(col, axis = 0)
+    return df_result, y_result
+    
+df_select, y_select = Select(sensor_fault1, label, trend_start_time, 5000)
+
 #------------------------------------------------------------------------------
 # Shift dataset
-def series_to_supervised(data, y, n_in=1, dropnan=True):
+def series_to_supervised(data, y, n_in=10, dropnan=True):
+    col = []
     for i in range (0, n_in):
-        temp = data.shift(i)
-        data = pd.concat([data, temp], axis = 1)
+        col.append(data.shift(i))
+    result = pd.concat(col, axis = 1)
     if dropnan:
-        data = data[n_in:]
+        result = result[n_in:]
         y = y[n_in:]
-    return data, y
+    return result, y
 
-label = ttf_fault1['TTF_FlowCool Pressure Dropped Below Limit']
-df, y = series_to_supervised(sensor_fault1, label, 1, True)
+df, y = series_to_supervised(df_select, y_select, 10, True)
 y = y.values.reshape(-1, 1)
 df_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 y_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 feature = df_scaler.fit_transform(df)
 label = y_scaler.fit_transform(y)
-X_train, X_valid = feature[:250000], feature[250000:]
-y_train, y_valid = label[:250000], label[250000:]
+y_train, y_valid, y_test = label[0:4000], label[40000:], label
+X_train, X_valid, y_test = feature[0:4000], feature[40000:], feature
+
 
 #------------------------------------------------------------------------------
 # LSTM
-X_train = X_train.reshape((X_train.shape[0], 1, X_train.shape[1]))
-X_valid = X_valid.reshape((X_valid.shape[0], 1, X_valid.shape[1]))
+X_train = X_train.reshape((X_train.shape[0], 10, 22))
+X_valid = X_valid.reshape((X_valid.shape[0], 10, 22))
 model = Sequential()
-model.add(LSTM(64, return_sequences = True, input_shape=(X_train.shape[1], X_train.shape[2])))
-model.add(LSTM(64))
+model.add(LSTM(110, return_sequences=True,  input_shape=(X_train.shape[1], X_train.shape[2])))
+model.add(LSTM(110, return_sequences=True))
+model.add(LSTM(110))
 model.add(Dense(1))
-model.compile(loss='mae', optimizer='adam')
+adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+model.compile(loss=customLoss, optimizer='adam')
 # Early stopping
 es = keras.callbacks.EarlyStopping(monitor='val_loss',
                               min_delta=0,
                               patience=2,
                               verbose=0, mode='auto')
-history = model.fit(X_train, y_train, epochs=50, batch_size=64, \
-                    validation_data=(X_valid, y_valid), verbose=2, shuffle=False\
-                    , callbacks=[es])
+history = model.fit(X_train, y_train, epochs=200, batch_size=256, \
+                    validation_data=(X_valid, y_valid), verbose=2, shuffle=False)
 
 plt.plot(history.history['loss'], label='train')
 plt.plot(history.history['val_loss'], label='test')
