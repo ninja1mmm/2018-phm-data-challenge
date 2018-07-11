@@ -1,3 +1,5 @@
+import random
+random.seed(1234)
 # Ignore Warnings
 import warnings
 warnings.filterwarnings("ignore")
@@ -101,28 +103,30 @@ def Select(df, y, start_time, num):
     df_result = pd.concat(col, axis = 0)
     return df_result, y_result
     
-df_select, y_select = Select(sensor_fault1, label, trend_start_time, 5000)
+df_select, y_select = Select(sensor_fault1, label, trend_start_time, 2000)
 
 #------------------------------------------------------------------------------
 # Shift dataset
-def series_to_supervised(data, y, n_in=10, dropnan=True):
-    col = []
+def series_to_supervised(data, y, n_in=50, dropnan=True):
+    data_col = []
+    y_col = []
     for i in range (0, n_in):
-        col.append(data.shift(i))
-    result = pd.concat(col, axis = 1)
+        data_col.append(data.shift(i))
+        y_col.append(y.shift(i))
+    result = pd.concat(data_col, axis = 1)
+    label = pd.concat(y_col, axis = 1)
     if dropnan:
         result = result[n_in:]
-        y = y[n_in:]
-    return result, y
+        label = label[n_in:]
+    return result, label
 
 df, y = series_to_supervised(df_select, y_select, 10, True)
-y = y.values.reshape(-1, 1)
 df_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 y_scaler = preprocessing.MinMaxScaler(feature_range = (0,1))
 feature = df_scaler.fit_transform(df)
 label = y_scaler.fit_transform(y)
-y_train, y_valid, y_test = label[0:4000], label[40000:], label
-X_train, X_valid, y_test = feature[0:4000], feature[40000:], feature
+y_train, y_valid, y_test = label[0:3900], label[16000:], label
+X_train, X_valid, y_test = feature[0:3900], feature[16000:], feature
 
 
 #------------------------------------------------------------------------------
@@ -130,10 +134,10 @@ X_train, X_valid, y_test = feature[0:4000], feature[40000:], feature
 X_train = X_train.reshape((X_train.shape[0], 10, 22))
 X_valid = X_valid.reshape((X_valid.shape[0], 10, 22))
 model = Sequential()
-model.add(LSTM(110, return_sequences=True,  input_shape=(X_train.shape[1], X_train.shape[2])))
-model.add(LSTM(110, return_sequences=True))
-model.add(LSTM(110))
-model.add(Dense(1))
+model.add(LSTM(10, return_sequences=True,  input_shape=(X_train.shape[1], X_train.shape[2])))
+model.add(LSTM(10, return_sequences=True))
+model.add(LSTM(10))
+model.add(Dense(10))
 adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
 model.compile(loss=customLoss, optimizer='adam')
 # Early stopping
@@ -141,7 +145,7 @@ es = keras.callbacks.EarlyStopping(monitor='val_loss',
                               min_delta=0,
                               patience=2,
                               verbose=0, mode='auto')
-history = model.fit(X_train, y_train, epochs=200, batch_size=256, \
+history = model.fit(X_train, y_train, epochs=500, batch_size=256, \
                     validation_data=(X_valid, y_valid), verbose=2, shuffle=False)
 
 plt.plot(history.history['loss'], label='train')
@@ -154,8 +158,8 @@ yhat = model.predict(X_train)
 y_pred = y_scaler.inverse_transform(yhat)
 y_real = y_scaler.inverse_transform(y_train)
 plt.figure()
-plt.plot(y_real)
-plt.plot(y_pred)
+plt.plot(y_real[:,0])
+plt.plot(y_pred[:,0])
 plt.legend()
 plt.show()
 # =============================================================================
