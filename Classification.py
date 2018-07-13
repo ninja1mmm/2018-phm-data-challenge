@@ -16,6 +16,8 @@ from sklearn import ensemble
 from keras import backend as K
 from sklearn.tree import export_graphviz
 import pydot
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import LogisticRegression
 
 def Error(y_pred, y_real):
     y_pred = np.nan_to_num(y_pred, copy = True)
@@ -92,8 +94,25 @@ trend_start_time = np.insert(trend_start_time, 0, 0)
 #     sensor_fault1 = sensor_fault1.join(one_hot)
 # 
 # =============================================================================
+# One hot encoding with "rare" values
+sensor_fault1.loc[sensor_fault1['recipe'].value_counts()[sensor_fault1['recipe']].values < 250000, 'recipe'] = "RARE_VALUE"
+sensor_fault1.loc[sensor_fault1['stage'].value_counts()[sensor_fault1['stage']].values < 250000, 'stage'] = "RARE_VALUE"
+enc = OneHotEncoder(handle_unknown='ignore')
+names = ['recipe','stage']
+tmp = sensor_fault1[names]
+for i in range(tmp.shape[1]):
+    tmp.iloc[:,i] = tmp.iloc[:,i].astype('str')
+    le = preprocessing.LabelEncoder()
+    tmp.iloc[:,i] = le.fit_transform(tmp.iloc[:,i])
+tmp = pd.DataFrame(enc.fit_transform(tmp).toarray())
 
+sensor_fault1 = sensor_fault1.join(tmp)
+sensor_fault1 = sensor_fault1.drop(['stage'],axis=1)
+sensor_fault1 = sensor_fault1.drop(['recipe'],axis=1)
 #------------------------------------------------------------------------------
+#sensor_fault1 = sensor_fault1[sensor_fault1['recipe_step']==3]
+#sensor_fault1 = sensor_fault1.drop(['recipe_step'],axis=1)
+# -----------------------------------------------------------------------------
 # Select data points
 def Select_tail(df, y, start_time, num):
     col = []
@@ -143,7 +162,9 @@ y_train, y_valid = df_new.iloc[:10000, -1], df_new.iloc[10000:, -1]
 # Decision Tree
 #clf = tree.DecisionTreeClassifier()
 #clf = tree.DecisionTreeClassifier(criterion = 'entropy')
-clf = ensemble.RandomForestClassifier(criterion = 'entropy')
+#clf = ensemble.RandomForestClassifier(criterion = 'entropy')
+clf = LogisticRegression()
+
 
 clf.fit(X_train, y_train)
 print('Training error is %f' %clf.score(X_train, y_train))
@@ -162,20 +183,24 @@ for i in range(1,len(trend_start_time)):
     plt.subplot(4,3,i)        
     test_fault_period = sensor_fault1.iloc[trend_start_time[i-1]:trend_start_time[i],:]
     test_pred = test_fault_period.drop(['time','runnum'], axis = 1)
-    test_y_pred = clf.predict(test_pred)
-    plt.plot(test_y_pred[-2000:])
-#    plt.plot(test_pred['recipe'])
+#    test_y_pred = clf.predict(test_pred)
+    test_y_pred = clf.predict_proba(test_pred)[:,0]
+    plt.scatter(test_fault_period['time'],test_y_pred,s=2)
+#    plt.plot(test_y_pred)
+#    plt.plot(test_y_pred[-8000:])
 
 # Write dot file. Can be translated to pdf with line commands
 #with open("Fault1.dot", "w") as f:
 #    f = tree.export_graphviz(clf, out_file=f)
 
 
-# View the graph directly
-tree = clf.estimators_[5]
-# Export the image to a dot file
-export_graphviz(tree, out_file = 'tree.dot', feature_names = X_train.columns, rounded = True, precision = 1)
-# Use dot file to create a graph
-(graph, ) = pydot.graph_from_dot_file('tree.dot')
-# Write graph to a png file
-graph.write_png('tree.png')
+# =============================================================================
+# # View the graph directly
+# tree = clf.estimators_[5]
+# # Export the image to a dot file
+# export_graphviz(tree, out_file = 'tree.dot', feature_names = X_train.columns, rounded = True, precision = 1)
+# # Use dot file to create a graph
+# (graph, ) = pydot.graph_from_dot_file('tree.dot')
+# # Write graph to a png file
+# graph.write_png('tree.png')
+# =============================================================================
