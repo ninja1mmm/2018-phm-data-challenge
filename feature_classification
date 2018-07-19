@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jul 19 17:26:23 2018
+
+@author: ninja1mmm
+"""
+
+import numpy as np
+import math
+import pandas as pd 
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import OneHotEncoder
+import seaborn as sns
+from sklearn import preprocessing
+from sklearn.metrics import mean_squared_error
+from sklearn import svm
+from sklearn import tree
+from sklearn import ensemble
+from keras import backend as K
+from sklearn.tree import export_graphviz
+import pydot
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import LogisticRegression
+
+feature_all = pd.read_pickle('feature_all')
+fault = pd.read_pickle('/home/ninja1mmm/Desktop/phm/data/fault/06_M01_train_fault_data')
+df = pd.read_pickle('/home/ninja1mmm/Desktop/phm/data/train/06_M01_DC_train')
+
+df=df.replace([np.inf, -np.inf], np.nan).dropna()
+df=df.reset_index(drop=True)
+
+fault_name_1 = 'FlowCool Pressure Dropped Below Limit'
+fault = fault[fault.fault_name==fault_name_1]
+idx = []
+for time_current in fault.time:
+    idx_tmp = np.argmax(df.time[(time_current-df.time)>0])
+    idx.append(df.time.iloc[idx_tmp])  
+    
+idx_feature_tmp = []
+counter = 0
+idx_tmp = 0
+for row in feature_all.index:
+    if idx_tmp >= len(idx):
+        break
+    if feature_all.end_time.iloc[row] < idx[idx_tmp]:
+        counter += 1
+    else:
+        idx_feature_tmp.append(counter)
+        counter = 1
+        idx_tmp += 1
+idx_feature_tmp.append(counter)
+
+feature_tmp = pd.DataFrame()
+tmp = 0
+for i in range(8):
+    if idx_feature_tmp[i] >= 5:
+#        sep = round(idx_combined_tmp[i]*0.2)
+        sep = 10
+        df_tmp_1 = feature_all.iloc[tmp+100:tmp+100+sep,:-5]
+        y_tmp = [1] * len(df_tmp_1)
+        df_tmp_1['label'] = y_tmp
+        df_tmp_0 = feature_all.iloc[tmp+idx_feature_tmp[i]-sep:tmp+idx_feature_tmp[i],:-5]
+        y_tmp = [0] * len(df_tmp_0)
+        df_tmp_0['label'] = y_tmp
+        df_tmp = pd. concat([df_tmp_1,df_tmp_0], axis = 0, sort = False)
+        feature_tmp = pd.concat([feature_tmp,df_tmp],axis=0,sort=False)
+        tmp += idx_feature_tmp[i]
+
+df_scaler = preprocessing.StandardScaler()
+feature = pd.DataFrame(df_scaler.fit_transform(feature_tmp.iloc[:,:-1]))
+feature_tmp = feature_tmp.reset_index(drop=True)
+feature = pd.concat([feature,feature_tmp.iloc[:,-1]],axis=1,sort=False)
+df_new = feature.sample(frac=1).reset_index(drop=True)
+
+split_num = 100
+
+X_train, X_valid = df_new.iloc[:split_num, :-1], df_new.iloc[split_num:, :-1]
+y_train, y_valid = df_new.iloc[:split_num, -1], df_new.iloc[split_num:, -1]
+#------------------------------------------------------------------------------
+# Decision Tree
+#clf = tree.DecisionTreeClassifier()
+#clf = tree.DecisionTreeClassifier(criterion = 'entropy')
+#clf = ensemble.RandomForestClassifier(criterion = 'entropy')
+clf = LogisticRegression()
+
+clf.fit(X_train, y_train)
+print('Training error is %f' %clf.score(X_train, y_train))
+print('Test error is %f' %clf.score(X_valid, y_valid))
